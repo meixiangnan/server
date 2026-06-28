@@ -1,0 +1,10 @@
+[requires]
+lua/5.4.7
+
+[generators]
+CMakeToolchain
+CMakeDeps
+
+[options]
+
+[imports]

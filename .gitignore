@@ -1,0 +1,10 @@
+build/
+build_debug/
+third_party/boost_187_0/
+third_party/installed/
+exe/
+*.o
+*.a
+*.so
+*.dll
+*.exe
