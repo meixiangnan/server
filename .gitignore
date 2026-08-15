@@ -2,7 +2,10 @@ build/
 build_debug/
 third_party/boost_1_87_0/
 third_party/installed/
-exe/
+exe/bind/
+exe/logs/
+exe/config/*.key
+exe/config/*.pem
 .idea/
 .vs/
 .git_backup/
