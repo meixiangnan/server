@@ -4,8 +4,8 @@
     
     //ssl: The global ssl files setting    
     "ssl": {
-        "cert": "../config/kincolong.online_bundle.crt",
-        "key": "../config/kincolong.online.key"        
+        "cert": "../config/bzhero.online_bundle.crt",
+        "key": "../config/bzhero.online.key"        
     },
     "listeners": [{
         //address: Ip address,0.0.0.0 by default

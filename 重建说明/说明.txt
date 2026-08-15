@@ -1,3 +1,6 @@
 C:\Users\12776\AppData\Local\Python\pythoncore-3.14-64\Scripts\conan.exe install .. -s compiler="msvc" -s compiler.version=194 -s compiler.cppstd=20 -s build_type=Release --output-folder . --build=missing
 C:\Users\12776\AppData\Local\Python\pythoncore-3.14-64\Scripts\conan.exe install .. -s compiler="msvc" -s compiler.version=194 -s compiler.cppstd=20 -s build_type=Debug --output-folder . --build=missing
 cmake .. --preset conan-default
+
+
+腾讯云证书续签网址：https://console.cloud.tencent.com/ssl/dsc/detail?id=a1Tptnhd
