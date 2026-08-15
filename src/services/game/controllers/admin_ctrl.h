@@ -11,6 +11,7 @@ class AdminCtrl : public HttpController<AdminCtrl>
     void fix_sixteen_minor_birth_year(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
     void patch_birth_year(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
     void clear_diamond(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
+    void test(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
 
 private:
     void ErrorResponse(int code, const std::string& msg, std::function<void(const HttpResponsePtr&)> callback);
@@ -23,6 +24,7 @@ public:
     ADD_METHOD_TO(AdminCtrl::fix_sixteen_minor_birth_year, "/admin/fix_sixteen_minor_birth_year", Post);
     ADD_METHOD_TO(AdminCtrl::patch_birth_year, "/admin/patch_birth_year", Post);
     ADD_METHOD_TO(AdminCtrl::clear_diamond, "/admin/clear_diamond", Post);
+    ADD_METHOD_TO(AdminCtrl::test, "/admin/test", Get);
 
     METHOD_LIST_END
 };
