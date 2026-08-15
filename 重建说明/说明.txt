@@ -1,6 +1,49 @@
+===== 编译环境 =====
 C:\Users\12776\AppData\Local\Python\pythoncore-3.14-64\Scripts\conan.exe install .. -s compiler="msvc" -s compiler.version=194 -s compiler.cppstd=20 -s build_type=Release --output-folder . --build=missing
 C:\Users\12776\AppData\Local\Python\pythoncore-3.14-64\Scripts\conan.exe install .. -s compiler="msvc" -s compiler.version=194 -s compiler.cppstd=20 -s build_type=Debug --output-folder . --build=missing
 cmake .. --preset conan-default
 
 
-腾讯云证书续签网址：https://console.cloud.tencent.com/ssl/dsc/detail?id=a1Tptnhd
+===== 部署文件说明 =====
+git 仓库中 exe/config/ 已包含以下文件：
+  - game_config.json          本地调试配置（http，db=0）
+  - game_config-online.json   线上部署配置（https，db=1）
+  - bzhero.online_bundle.crt  SSL 证书（公开，已在 git 里）
+  - bzhero.online.csr         证书申请文件（已在 git 里）
+  - kincolong.online_bundle.crt  旧证书（保留备用）
+
+以下文件【不在 git 里】，需手动复制到部署服务器 exe/config/ 目录：
+  - bzhero.online.key         SSL 私钥（私密，勿泄露）
+  本地备份路径：C:\Users\12776\Downloads\bzhero.online_nginx\bzhero.online.key
+
+
+===== SSL 证书说明 =====
+当前证书：
+  域名：bzhero.online
+  颁发机构：腾讯云 / DigiCert
+  到期时间：2026年11月13日
+  腾讯云控制台：https://console.cloud.tencent.com/ssl/dsc/detail?id=a1Tptnhd
+
+证书到期续签步骤：
+1. 打开腾讯云 SSL 控制台：https://console.cloud.tencent.com/ssl
+2. 点击"申请免费证书"，证书绑定域名填 bzhero.online
+3. 验证方式选"手动 DNS 验证"
+4. 提交后腾讯云给出一条 TXT 解析记录，格式如下：
+     主机记录：_dnsauth
+     记录类型：TXT
+     记录值：xxxxxx（腾讯云提供）
+5. 打开腾讯云 DNS 解析控制台：https://console.cloud.tencent.com/cns
+   找到 bzhero.online → 解析 → 添加记录，按上一步填写，保存
+6. 回到 SSL 控制台点"验证"，几分钟内自动通过
+7. 下载证书，选 Nginx 格式，得到：
+     bzhero.online_bundle.crt
+     bzhero.online.key
+8. 将以上两个文件上传到部署服务器 exe/config/ 替换旧文件
+9. 同时更新 git 仓库：将新的 bzhero.online_bundle.crt 和 bzhero.online.csr 提交
+   （bzhero.online.key 私钥不提交到 git）
+10. 重启服务器 Game.exe，新证书生效
+
+注意：
+  - 私钥 bzhero.online.key 丢失后无法找回，必须重新申请证书
+  - 建议将私钥加密备份到安全位置（U 盘或私有网盘）
+  - 客户端代码无需修改，AcceptAllCertificates 跳过域名验证，证书更换对客户端透明
