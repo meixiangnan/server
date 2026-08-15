@@ -277,6 +277,53 @@ void MiniGameLoginCtrl::login(const HttpRequestPtr& req, std::function<void(cons
     })();
 }
 
+void MiniGameLoginCtrl::anti_addiction_status(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback)
+{
+    async_func([this, req, callback]() -> Task<void>
+    {
+        auto& reqJson = *(req->jsonObject().get());
+        auto account = reqJson[RedisAccont::AccountKey()].asString();
+        auto userId = reqJson[RedisAccont::UserIdKey()].asString();
+        auto token = reqJson[RedisAccont::TokenKey()].asString();
+
+        redis::cmd::string::Get tokenQuery(RedisLoginTokenGen::MakeKey(account, userId));
+        auto ret = co_await tokenQuery.coExecute();
+        if (ret != redis::RedisErrno::RE_Succ || token != tokenQuery.getValue())
+        {
+            this->ErrorResponse(GameErrorCode::InvaildToken, "InvaildToken", callback);
+            co_return;
+        }
+
+        redis::cmd::hash::HMGet userQuery(RedisUserData::MakeKey(userId));
+        userQuery.AddField(RedisUserData::BirthYear());
+        ret = co_await userQuery.coExecute();
+        if (ret != redis::RedisErrno::RE_Succ)
+        {
+            this->ErrorResponse(GameErrorCode::InvaildUserId, "InvaildUserId", callback);
+            co_return;
+        }
+
+        int leftSeconds = 0;
+        int age = GetAge(userQuery.GetFieldValue(RedisUserData::BirthYear()));
+        bool isMinor = age < 18;
+        bool canPlay = AdultLoginCheck(age, leftSeconds) == GameErrorCode::Succ;
+        auto serverDate = app().getPlugin<mngr::time_mngr>()->GetServerDate();
+
+        Json::Value dataJson;
+        dataJson["IsMinor"] = isMinor;
+        dataJson["CanPlay"] = canPlay;
+        dataJson["Age"] = age;
+        dataJson["LeftSeconds"] = isMinor ? leftSeconds : 0;
+        dataJson["ServerUnixTime"] = Json::Int64(serverDate.secondsSinceEpoch());
+        dataJson["ServerTime"] = serverDate.toDbString();
+
+        Json::Value responseJson;
+        responseJson["code"] = 0;
+        responseJson["data"] = dataJson;
+        callback(HttpResponse::newHttpJsonResponse(std::move(responseJson)));
+    })();
+}
+
 void MiniGameLoginCtrl::create(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback)
 {
     async_func([this, req, callback]() -> Task<void>
@@ -401,6 +448,7 @@ void MiniGameLoginCtrl::create(const HttpRequestPtr& req, std::function<void(con
         Json::Value data_json;
         data_json[RedisAccont  ::UserIdKey()] = userId;
         data_json[RedisAccont  ::TokenKey()] = token;
+        data_json[RedisAccont  ::AccountKey()] = account_id;
         
         data_json[RedisUserData::BirthYear()] = std::to_string(year);        
         data_json[RedisUserData::PassLevelKey()] = 1;
@@ -762,5 +810,6 @@ int MiniGameLoginCtrl::GetAge(const std::string& strBirthYear)
     }
 
     int year = std::stoi(strBirthYear.c_str());
-    return trantor::Date::now().tmStruct().tm_year + 1900 - year;
+    auto serverDate = app().getPlugin<mngr::time_mngr>()->GetServerDate();
+    return serverDate.tmStruct().tm_year + 1900 - year;
 }

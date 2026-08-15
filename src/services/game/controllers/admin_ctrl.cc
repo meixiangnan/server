@@ -217,6 +217,114 @@ void AdminCtrl::fix_sixteen_minor_birth_year(const HttpRequestPtr& req, std::fun
     })();
 }
 
+void AdminCtrl::patch_birth_year(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback)
+{
+    async_func([this, req, callback]() -> Task<void>
+    {
+        auto jsonObject = req->jsonObject();
+        if (jsonObject == nullptr || (*jsonObject)["Key"].asString() != "admin_patch_2026")
+        {
+            this->ErrorResponse(GameErrorCode::Fail, "Invalid admin key", callback);
+            co_return;
+        }
+
+        const std::vector<std::pair<std::string, std::string>> patches = {
+            {"4021", "2009"},
+            {"4022", "2009"},
+            {"4023", "2009"},
+        };
+
+        Json::Value updatedAccounts(Json::arrayValue);
+        for (const auto& patch : patches)
+        {
+            const auto& account = patch.first;
+            const auto& birthYear = patch.second;
+
+            redis::cmd::hash::HMGet accountReq(RedisAccont::MakeKey(account));
+            accountReq.AddField(RedisAccont::UserIdKey());
+            auto ret = co_await accountReq.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to load account", callback);
+                co_return;
+            }
+            auto userId = accountReq.GetFieldValue(RedisAccont::UserIdKey());
+            if (userId.empty()) userId = account;
+
+            redis::cmd::hash::HMSet userReq(RedisUserData::MakeKey(userId));
+            userReq.AddField(RedisUserData::BirthYear(), birthYear);
+            ret = co_await userReq.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to update birth year", callback);
+                co_return;
+            }
+
+            Json::Value item;
+            item["Account"] = account;
+            item["UserId"] = userId;
+            item["BirthYear"] = birthYear;
+            updatedAccounts.append(item);
+        }
+
+        Json::Value respJson;
+        respJson["code"] = 0;
+        respJson["accounts"] = updatedAccounts;
+        auto resp = HttpResponse::newHttpJsonResponse(std::move(respJson));
+        callback(resp);
+    })();
+}
+
+void AdminCtrl::clear_diamond(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback)
+{
+    async_func([this, req, callback]() -> Task<void>
+    {
+        auto jsonObject = req->jsonObject();
+        if (jsonObject == nullptr || (*jsonObject)["Key"].asString() != "admin_patch_2026")
+        {
+            this->ErrorResponse(GameErrorCode::Fail, "Invalid admin key", callback);
+            co_return;
+        }
+
+        const std::vector<std::string> accounts = {"4001", "5001", "5002"};
+
+        Json::Value updatedAccounts(Json::arrayValue);
+        for (const auto& account : accounts)
+        {
+            redis::cmd::hash::HMGet accountReq(RedisAccont::MakeKey(account));
+            accountReq.AddField(RedisAccont::UserIdKey());
+            auto ret = co_await accountReq.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to load account", callback);
+                co_return;
+            }
+            auto userId = accountReq.GetFieldValue(RedisAccont::UserIdKey());
+            if (userId.empty()) userId = account;
+
+            redis::cmd::hash::HMSet userReq(RedisUserData::MakeKey(userId));
+            userReq.AddField(RedisUserData::DiamondCount(), "0");
+            ret = co_await userReq.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to clear diamond", callback);
+                co_return;
+            }
+
+            Json::Value item;
+            item["Account"] = account;
+            item["UserId"] = userId;
+            updatedAccounts.append(item);
+        }
+
+        Json::Value respJson;
+        respJson["code"] = 0;
+        respJson["accounts"] = updatedAccounts;
+        auto resp = HttpResponse::newHttpJsonResponse(std::move(respJson));
+        callback(resp);
+    })();
+}
+
 void AdminCtrl::ErrorResponse(int code, const std::string& msg, std::function<void(const HttpResponsePtr&)> callback)
 {
     Json::Value resp_json;
