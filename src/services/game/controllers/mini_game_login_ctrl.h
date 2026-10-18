@@ -8,7 +8,8 @@ class MiniGameLoginCtrl : public HttpController<MiniGameLoginCtrl>
     void login(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
     void create(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
     void create_role(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
-    
+    void anti_addiction_status(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
+
     void upload_score(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
     void load_leaderboard(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback);
 private:
@@ -21,12 +22,14 @@ private:
 public:
     METHOD_LIST_BEGIN
 
-    ADD_METHOD_TO(MiniGameLoginCtrl::quick_login,    "/user/quick_login", Post);
-    ADD_METHOD_TO(MiniGameLoginCtrl::login,          "/user/login", Post);
-    ADD_METHOD_TO(MiniGameLoginCtrl::create,         "/user/create", Post);
-    ADD_METHOD_TO(MiniGameLoginCtrl::create_role,    "/user/create_role", Post);
-    
-    ADD_METHOD_TO(MiniGameLoginCtrl::upload_score,    "/game/upload_pass_level",        Post);    
-    ADD_METHOD_TO(MiniGameLoginCtrl::load_leaderboard,"/game/load_leaderboard",         Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::quick_login,           "/user/quick_login",           Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::login,                 "/user/login",                 Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::create,                "/user/create",                Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::create_role,           "/user/create_role",           Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::anti_addiction_status, "/user/anti_addiction_status", Post);
+
+    ADD_METHOD_TO(MiniGameLoginCtrl::upload_score,          "/game/upload_pass_level",     Post);
+    ADD_METHOD_TO(MiniGameLoginCtrl::load_leaderboard,      "/game/load_leaderboard",      Post);
+
     METHOD_LIST_END
 };
