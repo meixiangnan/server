@@ -1,15 +1,21 @@
 #include "admin_ctrl.h"
 
 #include "plugins/redis/cmds/redis_cmd_flushdb.h"
+#include "plugins/redis/cmds/redis_cmd_keys.h"
+#include "plugins/redis/cmds/redis_cmd_del.h"
 #include "plugins/redis/cmds/hset/redis_cmd_hmget.h"
 #include "plugins/redis/cmds/hset/redis_cmd_hmset.h"
 #include "plugins/redis/cmds/zrank/redis_cmd_zadd.h"
+#include "plugins/redis/cmds/zrank/redis_cmd_zrem.h"
 #include "plugins/message/game_defines.h"
 #include "plugins/message/redis_structs.h"
+#include "plugins/game_modules/leaderboard_mngr/leaderboard_mngr.h"
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -393,6 +399,201 @@ void AdminCtrl::clear_diamond(const HttpRequestPtr& req, std::function<void(cons
         Json::Value respJson;
         respJson["code"] = 0;
         respJson["accounts"] = updatedAccounts;
+        auto resp = HttpResponse::newHttpJsonResponse(std::move(respJson));
+        callback(resp);
+    })();
+}
+
+void AdminCtrl::delete_except_accounts(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback)
+{
+    async_func([this, req, callback]() -> Task<void>
+    {
+        auto jsonObject = req->jsonObject();
+        if (jsonObject == nullptr || (*jsonObject)["Key"].asString() != "delete_except_accounts_2026")
+        {
+            this->ErrorResponse(GameErrorCode::Fail, "Invalid admin key", callback);
+            co_return;
+        }
+
+        const auto& accountsJson = (*jsonObject)["Accounts"];
+        if (!accountsJson.isArray() || accountsJson.size() == 0)
+        {
+            this->ErrorResponse(GameErrorCode::Fail, "Accounts must be a non-empty array", callback);
+            co_return;
+        }
+
+        std::unordered_set<std::string> keepAccounts;
+        Json::Value keepAccountsJson(Json::arrayValue);
+        for (const auto& item : accountsJson)
+        {
+            std::string account = item.asString();
+            if (account.empty() || !keepAccounts.insert(account).second)
+            {
+                continue;
+            }
+            keepAccountsJson.append(account);
+        }
+
+        if (keepAccounts.empty())
+        {
+            this->ErrorResponse(GameErrorCode::Fail, "Accounts must be a non-empty array", callback);
+            co_return;
+        }
+
+        redis::cmd::Keys accountKeys("Account:*");
+        auto ret = co_await accountKeys.coExecute();
+        if (ret != redis::RedisErrno::RE_Succ)
+        {
+            this->ErrorResponse(GameErrorCode::DBError, "Failed to list accounts", callback);
+            co_return;
+        }
+
+        std::unordered_set<std::string> keepUserIds;
+        Json::Value deletedAccounts(Json::arrayValue);
+        std::vector<std::string> keysToDelete;
+        redis::cmd::hash::ZRem rankRem(RedisPassLevelRank::MakeKey());
+        auto* leaderboard = drogon::app().getPlugin<mngr::leaderboard_mngr>();
+
+        for (const auto& accountKey : accountKeys.GetKeys())
+        {
+            const std::string prefix = "Account:";
+            if (accountKey.rfind(prefix, 0) != 0)
+            {
+                continue;
+            }
+
+            std::string account = accountKey.substr(prefix.size());
+            redis::cmd::hash::HMGet accountReq(accountKey);
+            accountReq.AddField(RedisAccont::UserIdKey());
+            ret = co_await accountReq.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to load account", callback);
+                co_return;
+            }
+
+            auto userId = accountReq.GetFieldValue(RedisAccont::UserIdKey());
+            if (userId.empty())
+            {
+                userId = account;
+            }
+
+            if (keepAccounts.find(account) != keepAccounts.end())
+            {
+                keepUserIds.insert(userId);
+                continue;
+            }
+
+            keysToDelete.push_back(accountKey);
+            keysToDelete.push_back(RedisUserData::MakeKey(userId));
+            keysToDelete.push_back(RedisLoginTokenGen::MakeKey(account, userId));
+            rankRem.AddMember(userId);
+            if (leaderboard != nullptr)
+            {
+                leaderboard->RemoveCacheUserNickName(userId);
+            }
+
+            Json::Value item;
+            item["Account"] = account;
+            item["UserId"] = userId;
+            deletedAccounts.append(item);
+        }
+
+        redis::cmd::Keys tokenKeys("LoginToken:*");
+        ret = co_await tokenKeys.coExecute();
+        if (ret != redis::RedisErrno::RE_Succ)
+        {
+            this->ErrorResponse(GameErrorCode::DBError, "Failed to list login tokens", callback);
+            co_return;
+        }
+
+        for (const auto& tokenKey : tokenKeys.GetKeys())
+        {
+            const std::string prefix = "LoginToken:";
+            if (tokenKey.rfind(prefix, 0) != 0)
+            {
+                continue;
+            }
+
+            auto rest = tokenKey.substr(prefix.size());
+            auto splitPos = rest.find(':');
+            std::string account = splitPos == std::string::npos ? rest : rest.substr(0, splitPos);
+            if (keepAccounts.find(account) == keepAccounts.end())
+            {
+                keysToDelete.push_back(tokenKey);
+            }
+        }
+
+        redis::cmd::Keys userDataKeys("UserData:*");
+        ret = co_await userDataKeys.coExecute();
+        if (ret != redis::RedisErrno::RE_Succ)
+        {
+            this->ErrorResponse(GameErrorCode::DBError, "Failed to list user data", callback);
+            co_return;
+        }
+
+        for (const auto& userDataKey : userDataKeys.GetKeys())
+        {
+            const std::string prefix = "UserData:";
+            if (userDataKey.rfind(prefix, 0) != 0)
+            {
+                continue;
+            }
+
+            std::string userId = userDataKey.substr(prefix.size());
+            if (keepUserIds.find(userId) == keepUserIds.end())
+            {
+                keysToDelete.push_back(userDataKey);
+                rankRem.AddMember(userId);
+                if (leaderboard != nullptr)
+                {
+                    leaderboard->RemoveCacheUserNickName(userId);
+                }
+            }
+        }
+
+        if (!rankRem.Empty())
+        {
+            ret = co_await rankRem.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to update leaderboard", callback);
+                co_return;
+            }
+        }
+
+        long long deletedKeyCount = 0;
+        const size_t batchSize = 100;
+        for (size_t i = 0; i < keysToDelete.size(); i += batchSize)
+        {
+            redis::cmd::Del delCmd;
+            size_t end = (std::min)(i + batchSize, keysToDelete.size());
+            for (size_t j = i; j < end; ++j)
+            {
+                delCmd.AddKey(keysToDelete[j]);
+            }
+
+            if (delCmd.Empty())
+            {
+                continue;
+            }
+
+            ret = co_await delCmd.coExecute();
+            if (ret != redis::RedisErrno::RE_Succ)
+            {
+                this->ErrorResponse(GameErrorCode::DBError, "Failed to delete accounts", callback);
+                co_return;
+            }
+            deletedKeyCount += delCmd.GetDeleted();
+        }
+
+        Json::Value respJson;
+        respJson["code"] = 0;
+        respJson["keepCount"] = static_cast<int>(keepAccounts.size());
+        respJson["deletedCount"] = static_cast<int>(deletedAccounts.size());
+        respJson["deletedKeyCount"] = static_cast<Json::Int64>(deletedKeyCount);
+        respJson["keepAccounts"] = keepAccountsJson;
+        respJson["deletedAccounts"] = deletedAccounts;
         auto resp = HttpResponse::newHttpJsonResponse(std::move(respJson));
         callback(resp);
     })();
